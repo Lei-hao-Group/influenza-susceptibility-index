@@ -2,11 +2,12 @@
 
 Usage
 -----
-    python run_analysis.py --panel panel.csv --out results
+    python run_analysis.py --kappa fits/kappa_estimates.csv --out results
 
-``panel.csv`` has one row per included province-season with the columns
-``province``, ``season`` (starting year, e.g. 2010 for 2010/11), ``kappa`` and
-one column per indicator, named as in ``data/indicator_framework.csv``.
+``province_season_indicators.csv`` has one row per province-season with the columns
+``province``, ``season`` (starting year, e.g. 2010 for 2010/11) and
+one column per indicator, named as in ``study_config.py``.
+Kappa estimates are supplied separately through ``--kappa``.
 Rows are used in the order of the file; the random cross-validation splits
 depend on that order.
 """
@@ -19,6 +20,7 @@ import pandas as pd
 from scipy import stats
 
 from isi import ISIBuilder, build_index
+from study_config import INDICATOR_FRAMEWORK, PROVINCE_GROUPS
 from regression import (ISIRegression, cv_r2, forward_selection, ols_clustered, partial_corr,
                         r2_ols, season_dummies, season_only_model, shapley_dimensions,
                         shapley_indicators, variance_shares, weight_sweep)
@@ -29,8 +31,16 @@ DATA = os.path.join(HERE, "..", "data")
 
 def load(args):
     panel = pd.read_csv(args.panel)
-    framework = pd.read_csv(args.framework)
-    groups = pd.read_csv(args.provinces).set_index("province")
+    if "kappa" not in panel.columns:
+        if not args.kappa:
+            raise SystemExit("--kappa is required: supply the collected SEIRS estimates")
+        estimates = pd.read_csv(args.kappa)
+        if "included" in estimates.columns:
+            estimates = estimates.loc[estimates["included"].isin([True, 1, "True", "1"])]
+        panel = panel.merge(estimates[["province", "season", "kappa"]],
+                            on=["province", "season"], how="inner", sort=False, validate="one_to_one")
+    framework = pd.read_csv(args.framework) if args.framework else pd.DataFrame(INDICATOR_FRAMEWORK)
+    groups = (pd.read_csv(args.provinces) if args.provinces else pd.DataFrame(PROVINCE_GROUPS)).set_index("province")
     missing = set(framework["variable"]) - set(panel.columns)
     if missing:
         raise SystemExit("indicators missing from the panel: %s" % sorted(missing))
@@ -182,9 +192,10 @@ def sensitivity_analysis(panel, framework, out):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--panel", required=True)
-    ap.add_argument("--framework", default=os.path.join(DATA, "indicator_framework.csv"))
-    ap.add_argument("--provinces", default=os.path.join(DATA, "province_groups.csv"))
+    ap.add_argument("--panel", default=os.path.join(DATA, "province_season_indicators.csv"))
+    ap.add_argument("--kappa", help="collected SEIRS estimates with province, season and kappa columns")
+    ap.add_argument("--framework", help="optional CSV overriding the indicator definitions")
+    ap.add_argument("--provinces", help="optional CSV overriding the province groups")
     ap.add_argument("--out", default="results")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)

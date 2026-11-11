@@ -14,9 +14,11 @@ immune periods, omega and the ILI+ scaling factor phi are fixed.
 
 Usage
 -----
-    python seirs_mcmc.py --humidity humidity.csv --out fits            # all province-seasons
-    python seirs_mcmc.py --humidity humidity.csv --out fits --province Zhejiang --season 2012
+    python seirs_mcmc.py --ili daily_ili.csv --humidity humidity.csv --out fits            # all province-seasons
+    python seirs_mcmc.py --ili daily_ili.csv --humidity humidity.csv --out fits --province Zhejiang --season 2012
     python seirs_mcmc.py --collect fits                                # table of kappa estimates
+
+``daily_ili.csv`` has the columns ``province``, ``date`` and ``ili_plus``.
 
 ``humidity.csv`` has the columns ``province``, ``date`` and
 ``specific_humidity`` (kg/kg, daily mean over the grid cells of the province).
@@ -33,9 +35,6 @@ import numpy as np
 import pandas as pd
 from numba import njit
 from scipy.optimize import differential_evolution
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-ILI_FILE = os.path.join(HERE, "..", "data", "province_daily_ili_plus.csv")
 
 SEASONS = list(range(2010, 2019))           # 2010/11 to 2018/19, by starting year
 SEASON_START_WEEK, SEASON_END_WEEK = 40, 39
@@ -297,7 +296,7 @@ def collect(out_root):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--ili", default=ILI_FILE)
+    ap.add_argument("--ili", help="daily ILI+ CSV with province, date and ili_plus columns")
     ap.add_argument("--humidity")
     ap.add_argument("--out", default="fits")
     ap.add_argument("--province")
@@ -310,6 +309,8 @@ if __name__ == "__main__":
     if a.collect:
         collect(a.collect)
     else:
+        if not a.ili:
+            ap.error("--ili is required (daily ILI+ CSV)")
         if not a.humidity:
             ap.error("--humidity is required")
         provinces = [a.province] if a.province else sorted(pd.read_csv(a.ili)["province"].unique())
